@@ -10,7 +10,7 @@ class AIParser:
     def __init__(self, ollama_host='http://localhost:11434', model_name='mistral'):
         """
         Initialize the AI Parser using a local Ollama instance.
-
+        
         Args:
             ollama_host (str): URL of the Ollama server.
             model_name (str): The name of the model to use (e.g., 'mistral', 'llama3', 'llama2:7b').
@@ -23,52 +23,27 @@ class AIParser:
     def generate_prompt(self, extracted_text):
         """
         Generates the prompt instructing the LLM to extract specific entities as JSON.
-
+        
         Args:
             extracted_text (str): The raw text extracted from the document.
-
+            
         Returns:
             str: The full prompt for the LLM.
         """
         prompt = f"""Tu es un expert juridique et data analyst travaillant pour la Direction Générale des Impôts (DGI).
-Ta tâche est d'analyser le texte suivant, qui est un acte d'enregistrement (ex: vente, location, etc.),
-et d'en extraire toutes les informations clés de manière structurée.
+Ta tâche est d'analyser de manière exhaustive le texte suivant, qui est un acte d'enregistrement.
+Étant donné que la nature des documents peut varier considérablement, il n'y a pas de schéma de données prédéfini.
 
-Voici le texte de l'acte :
+Voici le texte du document :
 --- DEBUT DU TEXTE ---
 {extracted_text}
 --- FIN DU TEXTE ---
 
-Extrais les entités suivantes si elles sont présentes. Si une information est manquante, mets `null`.
-Format de sortie attendu : UN SEUL OBJET JSON VALIDE (ne rajoute pas de texte avant ou après le JSON).
+Objectif : Extrais le maximum d'informations pertinentes présentes dans ce document.
+Construis dynamiquement la structure de sortie pour qu'elle reflète au mieux le contenu réel du texte (ex: type de document, dates, personnes impliquées avec leurs rôles et informations d'identification, entreprises, adresses, montants, biens concernés, références légales, clauses importantes, etc.).
 
-Structure JSON attendue (à adapter selon les infos trouvées) :
-{{
-    "type_acte": "Nature de l'acte (ex: Vente immobilière, Cession de parts, etc.)",
-    "date_acte": "Date de rédaction ou d'enregistrement de l'acte (format AAAA-MM-JJ si possible)",
-    "parties_impliquees": [
-        {{
-            "role": "ex: Vendeur, Acheteur, Bailleur, Locataire",
-            "nom": "Nom complet ou raison sociale",
-            "cin_ou_rc": "Numéro de carte d'identité ou Registre de Commerce",
-            "adresse": "Adresse complète"
-        }}
-    ],
-    "biens_concernes": [
-        {{
-            "description": "Description du bien (ex: Appartement, terrain, etc.)",
-            "adresse": "Adresse ou localisation du bien",
-            "titre_foncier": "Numéro du titre foncier s'il existe",
-            "superficie": "Superficie avec unité"
-        }}
-    ],
-    "montant_transaction": {{
-        "valeur": "Montant numérique (ex: 500000)",
-        "devise": "Devise (ex: MAD, EUR)"
-    }},
-    "notaire_ou_redacteur": "Nom du notaire ou du cabinet ayant rédigé l'acte"
-}}
-
+Format de sortie exigé : UN SEUL OBJET JSON VALIDE (ne rajoute surtout pas de texte avant ou après le JSON).
+Les clés du JSON doivent être explicites et en français.
 Génère UNIQUEMENT le code JSON, sans aucun autre commentaire.
 """
         return prompt
@@ -76,30 +51,31 @@ Génère UNIQUEMENT le code JSON, sans aucun autre commentaire.
     def parse_text(self, extracted_text):
         """
         Sends the extracted text to the local LLM and parses the JSON response.
-
+        
         Args:
             extracted_text (str): The raw text from the document.
-
+            
         Returns:
             dict: A dictionary containing the parsed JSON data, or None if extraction fails.
         """
         prompt = self.generate_prompt(extracted_text)
-
+        
         payload = {
             "model": self.model_name,
             "prompt": prompt,
             "stream": False,
             "format": "json" # Ollama supports enforcing JSON output for supported models
         }
-
+        
         try:
             logger.info(f"Sending request to Ollama ({self.model_name})...")
-            response = requests.post(self.api_url, json=payload, timeout=1200)
+            # Increased timeout to 600 seconds (10 minutes) for slower local models / long documents
+            response = requests.post(self.api_url, json=payload, timeout=600)
             response.raise_for_status()
-
+            
             result_json = response.json()
             generated_text = result_json.get("response", "")
-
+            
             # Clean up potential markdown formatting around JSON if 'format: json' wasn't strictly respected by older models
             generated_text = generated_text.strip()
             if generated_text.startswith("```json"):
@@ -107,12 +83,12 @@ Génère UNIQUEMENT le code JSON, sans aucun autre commentaire.
             if generated_text.endswith("```"):
                 generated_text = generated_text[:-3]
             generated_text = generated_text.strip()
-
+            
             # Parse the string into a Python dictionary
             structured_data = json.loads(generated_text)
             logger.info("Successfully extracted structured data via LLM.")
             return structured_data
-
+            
         except requests.exceptions.RequestException as e:
             logger.error(f"Error communicating with Ollama server: {e}")
             logger.error("Make sure Ollama is running locally (e.g., 'ollama serve') and the model is downloaded ('ollama run <model>').")
@@ -132,3 +108,4 @@ if __name__ == "__main__":
     # data = parser.parse_text(test_text)
     # print(json.dumps(data, indent=2, ensure_ascii=False))
     pass
+

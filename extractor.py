@@ -2,6 +2,7 @@ import os
 import fitz  # PyMuPDF
 from paddleocr import PaddleOCR
 import logging
+from text_cleaner import clean_text
 
 # Configure logger
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -51,7 +52,7 @@ class DocumentExtractor:
                 native_text = page.get_text().strip()
 
                 # Heuristic: If native text is less than 50 characters, it might be a scanned page or an image
-                if len(native_text) < 50:
+                if len(native_text) < 100:
                     logger.info(f"Page {page_num + 1} seems to be a scan or image. Falling back to OCR.")
 
                     # Convert PDF page to an image (pixmap)
@@ -81,8 +82,8 @@ class DocumentExtractor:
 
                 else:
                     logger.info(f"Page {page_num + 1} contains native text. Extracting directly.")
-                    extracted_text += f"\n--- Page {page_num + 1} ---\n" + native_text
-
+                    page_text_clean = clean_text(native_text)
+                    extracted_text+=page_text_clean
             doc.close()
             return extracted_text.strip()
 
@@ -92,7 +93,4 @@ class DocumentExtractor:
 
 if __name__ == "__main__":
     # Simple test (you need a dummy PDF to test)
-    # extractor = DocumentExtractor(lang_ocr='fr')
-    # text = extractor.extract_text_from_pdf("sample.pdf")
-    # print(text)
     pass
